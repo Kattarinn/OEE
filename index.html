@@ -1,0 +1,440 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>OEE Calculator for SMEs</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    /* Embedded all styles instead of relying on Tailwind CDN */
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+      background: #f1f5f9;
+      color: #0f172a;
+      line-height: 1.6;
+      min-height: 100vh;
+      padding: 24px;
+    }
+    .container { max-width: 1200px; margin: 0 auto; }
+    .space-y > * + * { margin-top: 24px; }
+    
+    /* Header */
+    .header { text-align: center; margin-bottom: 32px; }
+    .header h1 { font-size: 2rem; font-weight: 700; color: #0f172a; margin-bottom: 8px; }
+    .header p { color: #64748b; font-size: 1rem; }
+    
+    /* Cards */
+    .card {
+      background: #ffffff;
+      border-radius: 12px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+      padding: 24px;
+    }
+    
+    /* Grid layouts */
+    .grid-2 { display: grid; grid-template-columns: 1fr; gap: 24px; }
+    .grid-4 { display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; }
+    .grid-3 { display: grid; grid-template-columns: 1fr; gap: 16px; }
+    @media (min-width: 768px) {
+      .grid-2 { grid-template-columns: repeat(2, 1fr); }
+      .grid-4 { grid-template-columns: repeat(4, 1fr); }
+      .grid-3 { grid-template-columns: repeat(3, 1fr); }
+    }
+    
+    /* Icon container */
+    .icon-box {
+      width: 40px; height: 40px; border-radius: 8px;
+      background: #ccfbf1; display: flex; align-items: center; justify-content: center;
+    }
+    .icon-box svg { width: 20px; height: 20px; color: #0f766e; }
+    
+    /* Flex helpers */
+    .flex { display: flex; }
+    .items-center { align-items: center; }
+    .gap-3 { gap: 12px; }
+    .gap-4 { gap: 16px; }
+    
+    /* Card header */
+    .card-header { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; }
+    .card-header h2 { font-size: 1rem; font-weight: 600; color: #0f172a; }
+    .card-header p { font-size: 0.875rem; color: #64748b; }
+    
+    /* Button */
+    .btn {
+      display: inline-block; width: 100%; padding: 12px 16px;
+      background: #0f766e; color: white; font-weight: 500;
+      border: none; border-radius: 8px; cursor: pointer;
+      font-size: 0.95rem; transition: background 0.2s;
+    }
+    .btn:hover { background: #14b8a6; }
+    
+    /* Drop zone */
+    .drop-zone {
+      border: 2px dashed #cbd5e1; border-radius: 8px;
+      padding: 32px; text-align: center; cursor: pointer;
+      transition: all 0.2s;
+    }
+    .drop-zone:hover, .drop-zone.dragover {
+      border-color: #0f766e; background: rgba(15, 118, 110, 0.05);
+    }
+    .drop-zone svg { width: 48px; height: 48px; color: #94a3b8; margin: 0 auto 12px; }
+    .drop-zone p { color: #475569; font-weight: 500; }
+    .drop-zone .hint { color: #94a3b8; font-size: 0.875rem; margin-top: 4px; }
+    
+    .file-name { color: #0f766e; font-weight: 500; font-size: 0.875rem; margin-top: 12px; display: none; }
+    .file-name.show { display: block; }
+    
+    .text-small { font-size: 0.875rem; color: #64748b; }
+    
+    /* KPI Cards */
+    .kpi-card {
+      padding: 20px; border-radius: 12px; border-left: 4px solid;
+      background: #ffffff;
+    }
+    .kpi-card .label { font-size: 0.875rem; font-weight: 500; color: #64748b; }
+    .kpi-card .value { font-size: 1.875rem; font-weight: 700; color: #0f172a; margin: 4px 0; }
+    .kpi-card .range { font-size: 0.75rem; color: #94a3b8; }
+    
+    .kpi-excellent { background: linear-gradient(135deg, #dcfce7 0%, #bbf7d0 100%); border-color: #22c55e; }
+    .kpi-good { background: linear-gradient(135deg, #fef9c3 0%, #fef08a 100%); border-color: #eab308; }
+    .kpi-poor { background: linear-gradient(135deg, #fee2e2 0%, #fecaca 100%); border-color: #ef4444; }
+    
+    /* Six Losses */
+    .loss-card {
+      padding: 16px; border-radius: 8px; border: 1px solid #e2e8f0;
+      background: #f8fafc;
+    }
+    .loss-card .loss-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+    .loss-card .loss-name { font-size: 0.875rem; font-weight: 500; color: #475569; }
+    .loss-card .loss-tag { font-size: 0.75rem; padding: 2px 8px; border-radius: 4px; }
+    .loss-card .loss-value { font-size: 1.5rem; font-weight: 700; color: #0f172a; }
+    .loss-card .loss-unit { font-size: 0.875rem; font-weight: 400; color: #64748b; }
+    
+    .tag-availability { background: #fee2e2; color: #dc2626; }
+    .tag-performance { background: #fef3c7; color: #d97706; }
+    .tag-quality { background: #dbeafe; color: #2563eb; }
+    
+    /* Section headers */
+    .section-title { font-size: 1.125rem; font-weight: 600; color: #0f172a; margin-bottom: 16px; }
+    
+    /* Chart container */
+    .chart-container { height: 320px; position: relative; }
+    
+    /* Table */
+    .table-container { overflow-x: auto; }
+    .data-table { width: 100%; border-collapse: collapse; font-size: 0.875rem; }
+    .data-table th {
+      text-align: left; padding: 12px 16px; background: #f8fafc;
+      font-weight: 600; color: #475569; border-bottom: 1px solid #e2e8f0;
+    }
+    .data-table td { padding: 12px 16px; border-bottom: 1px solid #f1f5f9; }
+    .data-table tr.row-excellent { background: #f0fdf4; }
+    .data-table tr.row-good { background: #fffbeb; }
+    .data-table tr.row-poor { background: #fef2f2; }
+    .data-table .font-bold { font-weight: 600; }
+    
+    /* Hidden */
+    .hidden { display: none !important; }
+    
+    /* Results section */
+    #results > * + * { margin-top: 24px; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <!-- Header -->
+    <header class="header">
+      <h1>OEE Calculator for SMEs</h1>
+      <p>Upload your production data to calculate Overall Equipment Effectiveness and analyze losses</p>
+    </header>
+
+    <!-- Upload Section -->
+    <div class="grid-2">
+      <!-- Template Download -->
+      <div class="card">
+        <div class="card-header">
+          <div class="icon-box">
+            <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+            </svg>
+          </div>
+          <div>
+            <h2>Download Excel Template</h2>
+            <p>Get started with our pre-formatted template</p>
+          </div>
+        </div>
+        <p class="text-small" style="margin-bottom: 16px;">The template includes all required columns: Day, Planned Production Time, Planned Downtime, Unplanned Downtime, Minor Stop Time, and more. Fill in 30 days of data and upload.</p>
+        <button onclick="downloadTemplate()" class="btn">Download Template (.xlsx)</button>
+      </div>
+
+      <!-- File Upload -->
+      <div class="card">
+        <div class="card-header">
+          <div class="icon-box">
+            <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/>
+            </svg>
+          </div>
+          <div>
+            <h2>Upload Production Data</h2>
+            <p>Excel (.xlsx, .xls) or CSV files supported</p>
+          </div>
+        </div>
+        <div id="dropZone" class="drop-zone" onclick="document.getElementById('fileInput').click()">
+          <input type="file" id="fileInput" accept=".xlsx,.xls,.csv" style="display:none" onchange="handleFile(this.files[0])">
+          <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/>
+          </svg>
+          <p>Drop your file here or click to browse</p>
+          <p class="hint">Maximum file size: 10MB</p>
+        </div>
+        <p id="fileName" class="file-name"></p>
+      </div>
+    </div>
+
+    <!-- Results Section (Hidden by default) -->
+    <div id="results" class="hidden">
+      <!-- KPI Cards -->
+      <div class="grid-4">
+        <div id="kpiOEE" class="kpi-card">
+          <p class="label">Overall OEE</p>
+          <p class="value">--</p>
+          <p class="range">Min: -- | Max: --</p>
+        </div>
+        <div id="kpiAvailability" class="kpi-card">
+          <p class="label">Availability</p>
+          <p class="value">--</p>
+          <p class="range">Min: -- | Max: --</p>
+        </div>
+        <div id="kpiPerformance" class="kpi-card">
+          <p class="label">Performance</p>
+          <p class="value">--</p>
+          <p class="range">Min: -- | Max: --</p>
+        </div>
+        <div id="kpiQuality" class="kpi-card">
+          <p class="label">Quality</p>
+          <p class="value">--</p>
+          <p class="range">Min: -- | Max: --</p>
+        </div>
+      </div>
+
+      <!-- Six Big Losses -->
+      <div class="card">
+        <h2 class="section-title">Six Big Losses Analysis</h2>
+        <div class="grid-3" id="sixLosses"></div>
+      </div>
+
+      <!-- Chart -->
+      <div class="card">
+        <h2 class="section-title">OEE Trend Over Time</h2>
+        <div class="chart-container">
+          <canvas id="oeeChart"></canvas>
+        </div>
+      </div>
+
+      <!-- Data Table -->
+      <div class="card" style="padding: 0; overflow: hidden;">
+        <div style="padding: 16px 24px; border-bottom: 1px solid #e2e8f0;">
+          <h2 class="section-title" style="margin-bottom: 0;">Production Data</h2>
+        </div>
+        <div class="table-container">
+          <table class="data-table">
+            <thead>
+              <tr id="tableHeader"></tr>
+            </thead>
+            <tbody id="tableBody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    let chartInstance = null;
+    
+    // Drag and drop handlers
+    const dropZone = document.getElementById('dropZone');
+    ['dragenter', 'dragover'].forEach(evt => {
+      dropZone.addEventListener(evt, e => { e.preventDefault(); dropZone.classList.add('dragover'); });
+    });
+    ['dragleave', 'drop'].forEach(evt => {
+      dropZone.addEventListener(evt, e => { e.preventDefault(); dropZone.classList.remove('dragover'); });
+    });
+    dropZone.addEventListener('drop', e => {
+      const file = e.dataTransfer.files[0];
+      if (file) handleFile(file);
+    });
+
+    function downloadTemplate() {
+      const headers = [
+        'Day', 'Planned Production Time (min)', 'Planned Downtime (min)', 'Unplanned Downtime (min)',
+        'Minor Stop Time (min)', 'Total Availability Loss (min)', 'Operating Time (min)',
+        'Ideal Cycle Time (s/unit)', 'Actual Cycle Time (s/unit)', 'Minor Stops (count/day)',
+        'Moisture-Variance Indicator', 'Temperature-Load Indicator', 'Total Output (units)',
+        'Good Output (units)', 'Defective Output (units)', 'Availability (%)', 'Performance (%)',
+        'Quality (%)', 'OEE (%)'
+      ];
+      
+      const sampleData = [];
+      for (let i = 1; i <= 30; i++) {
+        sampleData.push([i, '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '']);
+      }
+      
+      const ws = XLSX.utils.aoa_to_sheet([headers, ...sampleData]);
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, 'OEE Data');
+      ws['!cols'] = headers.map(() => ({ wch: 18 }));
+      
+      const wbout = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+      const blob = new Blob([wbout], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'oee_template.xlsx';
+      a.click();
+      URL.revokeObjectURL(url);
+    }
+
+    function handleFile(file) {
+      if (!file) return;
+      
+      const fileNameEl = document.getElementById('fileName');
+      fileNameEl.textContent = 'Loaded: ' + file.name;
+      fileNameEl.classList.add('show');
+      
+      const reader = new FileReader();
+      reader.onload = function(e) {
+        try {
+          let data;
+          if (file.name.endsWith('.csv')) {
+            const wb = XLSX.read(e.target.result, { type: 'string' });
+            data = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]]);
+          } else {
+            const wb = XLSX.read(e.target.result, { type: 'array' });
+            data = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]]);
+          }
+          processData(data);
+        } catch (err) {
+          alert('Error reading file: ' + err.message);
+        }
+      };
+      
+      if (file.name.endsWith('.csv')) {
+        reader.readAsText(file);
+      } else {
+        reader.readAsArrayBuffer(file);
+      }
+    }
+
+    function processData(data) {
+      document.getElementById('results').classList.remove('hidden');
+      
+      const oeeValues = data.map(r => parseFloat(r['OEE (%)']) || 0);
+      const availValues = data.map(r => parseFloat(r['Availability (%)']) || 0);
+      const perfValues = data.map(r => parseFloat(r['Performance (%)']) || 0);
+      const qualValues = data.map(r => parseFloat(r['Quality (%)']) || 0);
+      
+      const avg = arr => arr.reduce((a, b) => a + b, 0) / arr.length;
+      const min = arr => Math.min(...arr);
+      const max = arr => Math.max(...arr);
+      
+      updateKPI('kpiOEE', avg(oeeValues), min(oeeValues), max(oeeValues));
+      updateKPI('kpiAvailability', avg(availValues), min(availValues), max(availValues));
+      updateKPI('kpiPerformance', avg(perfValues), min(perfValues), max(perfValues));
+      updateKPI('kpiQuality', avg(qualValues), min(qualValues), max(qualValues));
+      
+      // Six Big Losses
+      const totalPlannedDowntime = data.reduce((sum, r) => sum + (parseFloat(r['Planned Downtime (min)']) || 0), 0);
+      const totalUnplannedDowntime = data.reduce((sum, r) => sum + (parseFloat(r['Unplanned Downtime (min)']) || 0), 0);
+      const totalMinorStops = data.reduce((sum, r) => sum + (parseFloat(r['Minor Stop Time (min)']) || 0), 0);
+      const totalDefects = data.reduce((sum, r) => sum + (parseFloat(r['Defective Output (units)']) || 0), 0);
+      
+      let totalSpeedLoss = 0;
+      data.forEach(r => {
+        const idealCycle = parseFloat(r['Ideal Cycle Time (s/unit)']) || 0;
+        const actualCycle = parseFloat(r['Actual Cycle Time (s/unit)']) || 0;
+        const output = parseFloat(r['Total Output (units)']) || 0;
+        if (actualCycle > idealCycle) {
+          totalSpeedLoss += ((actualCycle - idealCycle) * output) / 60;
+        }
+      });
+      
+      const losses = [
+        { name: 'Planned Downtime', value: totalPlannedDowntime, unit: 'min', category: 'Availability', tagClass: 'tag-availability' },
+        { name: 'Unplanned Downtime', value: totalUnplannedDowntime, unit: 'min', category: 'Availability', tagClass: 'tag-availability' },
+        { name: 'Minor Stops', value: totalMinorStops, unit: 'min', category: 'Performance', tagClass: 'tag-performance' },
+        { name: 'Speed Loss', value: totalSpeedLoss, unit: 'min', category: 'Performance', tagClass: 'tag-performance' },
+        { name: 'Startup Rejects', value: Math.round(totalDefects * 0.3), unit: 'units', category: 'Quality', tagClass: 'tag-quality' },
+        { name: 'Production Rejects', value: Math.round(totalDefects * 0.7), unit: 'units', category: 'Quality', tagClass: 'tag-quality' }
+      ];
+      
+      document.getElementById('sixLosses').innerHTML = losses.map(loss => `
+        <div class="loss-card">
+          <div class="loss-header">
+            <span class="loss-name">${loss.name}</span>
+            <span class="loss-tag ${loss.tagClass}">${loss.category}</span>
+          </div>
+          <p class="loss-value">${loss.value.toLocaleString(undefined, {maximumFractionDigits: 1})} <span class="loss-unit">${loss.unit}</span></p>
+        </div>
+      `).join('');
+      
+      // Chart
+      const days = data.map(r => 'Day ' + r['Day']);
+      
+      if (chartInstance) chartInstance.destroy();
+      
+      chartInstance = new Chart(document.getElementById('oeeChart'), {
+        type: 'line',
+        data: {
+          labels: days,
+          datasets: [
+            { label: 'OEE', data: oeeValues, borderColor: '#0f766e', backgroundColor: 'rgba(15, 118, 110, 0.1)', tension: 0.3, fill: true },
+            { label: 'Availability', data: availValues, borderColor: '#3b82f6', backgroundColor: 'transparent', tension: 0.3 },
+            { label: 'Performance', data: perfValues, borderColor: '#f59e0b', backgroundColor: 'transparent', tension: 0.3 },
+            { label: 'Quality', data: qualValues, borderColor: '#22c55e', backgroundColor: 'transparent', tension: 0.3 }
+          ]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: { legend: { position: 'top' } },
+          scales: { y: { min: 0, max: 120, ticks: { callback: v => v + '%' } } }
+        }
+      });
+      
+      // Table
+      const tableHeaders = ['Day', 'Planned Time', 'Operating Time', 'Downtime', 'Output', 'Good', 'Defects', 'Avail %', 'Perf %', 'Qual %', 'OEE %'];
+      document.getElementById('tableHeader').innerHTML = tableHeaders.map(h => '<th>' + h + '</th>').join('');
+      
+      document.getElementById('tableBody').innerHTML = data.map(row => {
+        const downtime = (parseFloat(row['Planned Downtime (min)']) || 0) + (parseFloat(row['Unplanned Downtime (min)']) || 0);
+        const oee = parseFloat(row['OEE (%)']) || 0;
+        const rowClass = oee >= 85 ? 'row-excellent' : oee >= 60 ? 'row-good' : 'row-poor';
+        return '<tr class="' + rowClass + '">' +
+          '<td class="font-bold">' + row['Day'] + '</td>' +
+          '<td>' + row['Planned Production Time (min)'] + '</td>' +
+          '<td>' + row['Operating Time (min)'] + '</td>' +
+          '<td>' + downtime.toFixed(1) + '</td>' +
+          '<td>' + row['Total Output (units)'] + '</td>' +
+          '<td>' + row['Good Output (units)'] + '</td>' +
+          '<td>' + row['Defective Output (units)'] + '</td>' +
+          '<td>' + parseFloat(row['Availability (%)']).toFixed(1) + '%</td>' +
+          '<td>' + parseFloat(row['Performance (%)']).toFixed(1) + '%</td>' +
+          '<td>' + parseFloat(row['Quality (%)']).toFixed(1) + '%</td>' +
+          '<td class="font-bold">' + oee.toFixed(1) + '%</td>' +
+        '</tr>';
+      }).join('');
+    }
+
+    function updateKPI(id, avg, minVal, maxVal) {
+      const el = document.getElementById(id);
+      const kpiClass = avg >= 85 ? 'kpi-excellent' : avg >= 60 ? 'kpi-good' : 'kpi-poor';
+      el.className = 'kpi-card ' + kpiClass;
+      el.querySelector('.value').textContent = avg.toFixed(1) + '%';
+      el.querySelector('.range').textContent = 'Min: ' + minVal.toFixed(1) + '% | Max: ' + maxVal.toFixed(1) + '%';
+    }
+  </script>
+</body>
+</html>
